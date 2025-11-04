@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnimcp-dataframe"
+version = "1.0.0"
+description = "DataFrame manipulation toolkit for MCP servers"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "OmniMCP Team", email = "team@omnimcp.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "polars>=0.20.0",
+    "formulas>=1.0.0",
+    "structlog>=23.0.0",
+    "pydantic>=2.0.0",
+    "typing-extensions>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/omnimcp/omnimcp-dataframe"
+Documentation = "https://omnimcp-dataframe.readthedocs.io"
+Repository = "https://github.com/omnimcp/omnimcp-dataframe.git"
+Issues = "https://github.com/omnimcp/omnimcp-dataframe/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["omnimcp_dataframe*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
