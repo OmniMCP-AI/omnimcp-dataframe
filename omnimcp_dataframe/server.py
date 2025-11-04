@@ -66,7 +66,7 @@ class DataFrameOperations:
         """
         try:
             if dataframe.height == 0:
-                return DataFrameOperationResult(data=[], success=True, shape="(0, 0)")
+                return DataFrameOperationResult(data=[], success=True, shape="(0, 0)", data_df=pl.DataFrame())
 
             df = dataframe
 
@@ -111,7 +111,8 @@ class DataFrameOperations:
                 success=True,
                 input_rows=df.height,
                 output_rows=sorted_df.height,
-                shape=f"({sorted_df.height}, {sorted_df.width})"
+                shape=f"({sorted_df.height}, {sorted_df.width})",
+                data_df=sorted_df
             )
 
         except Exception as e:
@@ -144,7 +145,8 @@ class DataFrameOperations:
                     data=[],
                     success=True,
                     input_rows=0,
-                    output_rows=0
+                    output_rows=0,
+                    data_df=pl.DataFrame()
                 )
 
             df = dataframe
@@ -189,7 +191,8 @@ class DataFrameOperations:
                 data=result_data,
                 success=True,
                 input_rows=df.height,
-                output_rows=filtered_df.height
+                output_rows=filtered_df.height,
+                data_df=filtered_df
             )
 
         except Exception as e:
@@ -233,7 +236,8 @@ class DataFrameOperations:
                     data=[],
                     success=True,
                     total_rows=0,
-                    duplicates_removed=0
+                    duplicates_removed=0,
+                    data_df=pl.DataFrame()
                 )
 
             # Concatenate
@@ -266,7 +270,8 @@ class DataFrameOperations:
                 data=result_data,
                 success=True,
                 total_rows=concatenated_df.height,
-                duplicates_removed=duplicates_removed
+                duplicates_removed=duplicates_removed,
+                data_df=concatenated_df
             )
 
         except Exception as e:
@@ -305,8 +310,7 @@ class DataFrameOperations:
                     data=[],
                     success=True,
                     total_rows=0,
-                    left_rows=left.height,
-                    right_rows=right.height
+                    data_df=pl.DataFrame()
                 )
 
             # Validate join parameters
@@ -384,7 +388,8 @@ class DataFrameOperations:
                 success=True,
                 total_rows=merged_df.height,
                 left_rows=left_df.height,
-                right_rows=right_df.height
+                right_rows=right_df.height,
+                data_df=merged_df
             )
 
         except Exception as e:
@@ -419,7 +424,8 @@ class DataFrameOperations:
                     input_rows=0,
                     output_rows=0,
                     group_columns=by,
-                    aggregated_columns=[]
+                    aggregated_columns=[],
+                    data_df=pl.DataFrame()
                 )
 
             df = dataframe
@@ -512,7 +518,8 @@ class DataFrameOperations:
                 input_rows=df.height,
                 output_rows=result_df.height,
                 group_columns=by,
-                aggregated_columns=aggregated_column_names
+                aggregated_columns=aggregated_column_names,
+                data_df=result_df
             )
 
         except Exception as e:
@@ -670,6 +677,7 @@ class DataFrameOperations:
                 success=True,
                 shape=f"({df.height}, {df.width})",
                 columns=df.columns,
+                data_df=df,
                 **{
                     "formula_applied": formula,
                     "result_column": column_name
@@ -707,7 +715,8 @@ class DataFrameOperations:
                     success=True,
                     input_rows=0,
                     output_rows=0,
-                    duplicates_removed=0
+                    duplicates_removed=0,
+                    data_df=pl.DataFrame()
                 )
 
             df = dataframe
@@ -739,7 +748,8 @@ class DataFrameOperations:
                 success=True,
                 input_rows=input_rows,
                 output_rows=output_rows,
-                duplicates_removed=duplicates_removed
+                duplicates_removed=duplicates_removed,
+                data_df=deduplicated_df
             )
 
         except Exception as e:
@@ -790,7 +800,8 @@ class DataFrameOperations:
                 success=True,
                 shape=shape,
                 input_rows=df.height,
-                output_rows=df.height
+                output_rows=df.height,
+                data_df=df
             )
 
         except Exception as e:

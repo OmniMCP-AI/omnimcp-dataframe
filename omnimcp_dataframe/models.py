@@ -1,6 +1,7 @@
 """Data models for DataFrame operations."""
 
 from typing import Any, Dict, List, Optional
+import polars as pl
 from pydantic import BaseModel, Field
 
 
@@ -24,6 +25,9 @@ class DataFrameOperationResult(BaseModel):
     # Operation-specific metadata
     input_rows: Optional[int] = Field(default=None, description="Number of rows in input dataframe")
     output_rows: Optional[int] = Field(default=None, description="Number of rows in output dataframe")
+    left_rows: Optional[int] = Field(default=None, description="Number of rows in left columns")
+    right_rows: Optional[int] = Field(default=None, description="Number of rows in right columns")
+
     shape: Optional[str] = Field(default=None, description="Shape of resulting dataframe '(rows, columns)'")
 
     # Operation-specific fields
@@ -36,8 +40,11 @@ class DataFrameOperationResult(BaseModel):
     right_columns: Optional[List[str]] = Field(default=None, description="Right columns used in join")
     confidence: Optional[float] = Field(default=None, description="Confidence score for fuzzy operations")
 
+    # DataFrame object field (excluded from JSON serialization)
+    data_df: Optional[pl.DataFrame] = Field(default=None, description="Resulting dataframe as Polars DataFrame", exclude=True)
+
     class Config:
-        extra = "allow"  # Allow additional fields for operation-specific metadata
+        arbitrary_types_allowed = True  # Allow Polars DataFrame type
 
 
 class FilterCondition(BaseModel):
