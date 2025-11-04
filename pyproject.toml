@@ -24,7 +24,7 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "polars>=0.20.0",
+    "polars>=1.8.2",
     "formulas>=1.0.0",
     "structlog>=23.0.0",
     "pydantic>=2.0.0",

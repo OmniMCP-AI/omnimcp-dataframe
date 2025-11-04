@@ -22,3 +22,14 @@ from .server import (
     DataFrameToolkit,
     DataFrameOperations,
 )
+
+# Unified interface
+from .unified import (
+    UnifiedDataFrameToolkit,
+    call_dataframe_tool,
+)
+
+__all__.extend([
+    "UnifiedDataFrameToolkit",
+    "call_dataframe_tool",
+])

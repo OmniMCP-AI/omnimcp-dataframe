@@ -46,9 +46,9 @@ class DataFrameOperations:
         self.logger = structlog.get_logger(__name__)
         self.formula_parser = formulas.Parser()
 
-    def sort(
+    async def sort(
         self,
-        dataframe: List[Dict[str, Any]],
+        dataframe: pl.DataFrame,
         by: List[str],
         descending: Optional[List[bool]] = None,
         limit: Optional[int] = None,
@@ -56,7 +56,7 @@ class DataFrameOperations:
         """Sort a dataframe by specified columns with optional limit for top-n results.
 
         Args:
-            dataframe: Array of objects representing rows
+            dataframe: Polars DataFrame
             by: List of column names to sort by
             descending: List of boolean values for sort direction
             limit: Optional limit to return only top N rows
@@ -65,9 +65,10 @@ class DataFrameOperations:
             DataFrameOperationResult with sorted data
         """
         try:
-            df = validate_dataframe_input(dataframe)
-            if df.height == 0:
+            if dataframe.height == 0:
                 return DataFrameOperationResult(data=[], success=True, shape="(0, 0)")
+
+            df = dataframe
 
             # Validate columns exist
             missing_columns = [col for col in by if col not in df.columns]
@@ -121,16 +122,16 @@ class DataFrameOperations:
                 message=f"Error sorting dataframe: {str(e)}"
             )
 
-    def filter(
+    async def filter(
         self,
-        dataframe: List[Dict[str, Any]],
+        dataframe: pl.DataFrame,
         conditions: List[Dict[str, Any]],
         logic: str = "AND",
     ) -> DataFrameOperationResult:
         """Filter a dataframe based on single or multiple conditions.
 
         Args:
-            dataframe: Array of objects representing rows
+            dataframe: Polars DataFrame
             conditions: Array of condition objects
             logic: Logic operator for combining conditions (AND/OR)
 
@@ -138,8 +139,7 @@ class DataFrameOperations:
             DataFrameOperationResult with filtered data
         """
         try:
-            df = validate_dataframe_input(dataframe)
-            if df.height == 0:
+            if dataframe.height == 0:
                 return DataFrameOperationResult(
                     data=[],
                     success=True,
@@ -147,6 +147,7 @@ class DataFrameOperations:
                     output_rows=0
                 )
 
+            df = dataframe
             # Build filter expressions
             expressions = []
             for cond in conditions:
@@ -199,10 +200,10 @@ class DataFrameOperations:
                 message=f"Error filtering dataframe: {str(e)}"
             )
 
-    def concat(
+    async def concat(
         self,
-        left: List[Dict[str, Any]],
-        right: List[Dict[str, Any]],
+        left: pl.DataFrame,
+        right: pl.DataFrame,
         drop_duplicates: bool = False,
         subset: Optional[List[str]] = None,
         keep: str = "first",
@@ -210,8 +211,8 @@ class DataFrameOperations:
         """Concatenate two dataframes with optional duplicate removal.
 
         Args:
-            left: Left dataframe
-            right: Right dataframe
+            left: Left Polars DataFrame
+            right: Right Polars DataFrame
             drop_duplicates: Whether to drop duplicates
             subset: Columns to consider for duplicates
             keep: Which duplicates to keep
@@ -220,12 +221,12 @@ class DataFrameOperations:
             DataFrameOperationResult with concatenated data
         """
         try:
-            # Convert to polars DataFrames
+            # Use input DataFrames directly
             pl_dataframes = []
-            if left:
-                pl_dataframes.append(pl.DataFrame(left))
-            if right:
-                pl_dataframes.append(pl.DataFrame(right))
+            if left.height > 0:
+                pl_dataframes.append(left)
+            if right.height > 0:
+                pl_dataframes.append(right)
 
             if not pl_dataframes:
                 return DataFrameOperationResult(
@@ -276,10 +277,10 @@ class DataFrameOperations:
                 message=f"Error concatenating dataframes: {str(e)}"
             )
 
-    def merge(
+    async def merge(
         self,
-        left: List[Dict[str, Any]],
-        right: List[Dict[str, Any]],
+        left: pl.DataFrame,
+        right: pl.DataFrame,
         on: Optional[List[str]] = None,
         left_on: Optional[List[str]] = None,
         right_on: Optional[List[str]] = None,
@@ -288,8 +289,8 @@ class DataFrameOperations:
         """Merge two dataframes on specified columns.
 
         Args:
-            left: Left dataframe
-            right: Right dataframe
+            left: Left Polars DataFrame
+            right: Right Polars DataFrame
             on: Column(s) to join on (when column names match)
             left_on: Column(s) from left dataframe
             right_on: Column(s) from right dataframe
@@ -299,13 +300,13 @@ class DataFrameOperations:
             DataFrameOperationResult with merged data
         """
         try:
-            if not left or not right:
+            if left.height == 0 or right.height == 0:
                 return DataFrameOperationResult(
                     data=[],
                     success=True,
                     total_rows=0,
-                    left_rows=len(left) if left else 0,
-                    right_rows=len(right) if right else 0
+                    left_rows=left.height,
+                    right_rows=right.height
                 )
 
             # Validate join parameters
@@ -331,9 +332,9 @@ class DataFrameOperations:
             if right_on and isinstance(right_on, str):
                 right_on = [right_on]
 
-            # Create dataframes
-            left_df = pl.DataFrame(left)
-            right_df = pl.DataFrame(right)
+            # Use input DataFrames directly
+            left_df = left
+            right_df = right
 
             # Validate join columns exist
             if on:
@@ -394,16 +395,16 @@ class DataFrameOperations:
                 message=f"Error merging dataframes: {str(e)}"
             )
 
-    def group_by(
+    async def group_by(
         self,
-        dataframe: List[Dict[str, Any]],
+        dataframe: pl.DataFrame,
         by: List[str],
         aggregations: List[Dict[str, Any]],
     ) -> DataFrameOperationResult:
         """Group dataframe by specified columns and apply aggregation functions.
 
         Args:
-            dataframe: Array of objects representing rows
+            dataframe: Polars DataFrame
             by: List of column names to group by
             aggregations: List of aggregation specifications
 
@@ -411,8 +412,7 @@ class DataFrameOperations:
             DataFrameOperationResult with grouped and aggregated data
         """
         try:
-            df = validate_dataframe_input(dataframe)
-            if df.height == 0:
+            if dataframe.height == 0:
                 return DataFrameOperationResult(
                     data=[],
                     success=True,
@@ -422,6 +422,7 @@ class DataFrameOperations:
                     aggregated_columns=[]
                 )
 
+            df = dataframe
             # Validate group columns exist
             missing_columns = [col for col in by if col not in df.columns]
             if missing_columns:
@@ -522,9 +523,9 @@ class DataFrameOperations:
                 message=f"Error in group_by operation: {str(e)}"
             )
 
-    def apply_formula(
+    async def apply_formula(
         self,
-        dataframe: List[Dict[str, Any]],
+        dataframe: pl.DataFrame,
         formula: str,
         column_name: str,
         use_excel_refs: bool = False,
@@ -533,7 +534,7 @@ class DataFrameOperations:
         """Apply Excel-like formulas to dataframe columns.
 
         Args:
-            dataframe: Array of objects representing rows
+            dataframe: Polars DataFrame
             formula: Formula string
             column_name: Name of the column to store results
             use_excel_refs: Whether to use Excel cell references
@@ -543,13 +544,14 @@ class DataFrameOperations:
             DataFrameOperationResult with formula applied
         """
         try:
-            df = validate_dataframe_input(dataframe, min_rows=1)
-            if df.height == 0:
+            if dataframe.height == 0:
                 return DataFrameOperationResult(
                     data=[],
                     success=False,
                     message="Dataframe cannot be empty"
                 )
+
+            df = dataframe
 
             # Simple mode: use column names directly
             if not use_excel_refs:
@@ -682,16 +684,16 @@ class DataFrameOperations:
                 message=f"Error applying Excel formula: {str(e)}"
             )
 
-    def drop_duplicates(
+    async def drop_duplicates(
         self,
-        dataframe: List[Dict[str, Any]],
+        dataframe: pl.DataFrame,
         subset: Optional[List[str]] = None,
         keep: str = "first",
     ) -> DataFrameOperationResult:
         """Remove duplicate rows from a dataframe.
 
         Args:
-            dataframe: Array of objects representing rows
+            dataframe: Polars DataFrame
             subset: Columns to consider for duplicates
             keep: Which duplicates to keep
 
@@ -699,8 +701,7 @@ class DataFrameOperations:
             DataFrameOperationResult with duplicates removed
         """
         try:
-            df = validate_dataframe_input(dataframe)
-            if df.height == 0:
+            if dataframe.height == 0:
                 return DataFrameOperationResult(
                     data=[],
                     success=True,
@@ -709,6 +710,7 @@ class DataFrameOperations:
                     duplicates_removed=0
                 )
 
+            df = dataframe
             input_rows = df.height
 
             # Validate subset columns exist
@@ -748,7 +750,7 @@ class DataFrameOperations:
                 message=f"Error removing duplicates: {str(e)}"
             )
 
-    def init_dataframe(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
+    async def init_dataframe(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
         """Initialize a dataframe from a list of dictionaries or JSON string.
 
         Args:
@@ -1108,34 +1110,59 @@ class DataFrameToolkit:
         """
         self.server = DataFrameServer(config)
 
-    def sort(self, dataframe: List[Dict[str, Any]], by: List[str], **kwargs) -> DataFrameOperationResult:
+    def _convert_to_dataframe(self, data: Union[List[Dict[str, Any]], pl.DataFrame]) -> pl.DataFrame:
+        """Convert list of dictionaries to polars DataFrame if needed.
+
+        Args:
+            data: Input data as list of dicts or polars DataFrame
+
+        Returns:
+            Polars DataFrame
+        """
+        if isinstance(data, pl.DataFrame):
+            return data
+        elif isinstance(data, list):
+            return validate_dataframe_input(data)
+        else:
+            raise ValueError(f"Unsupported data type: {type(data)}. Expected list or polars.DataFrame.")
+
+    async def sort(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], by: List[str], **kwargs) -> DataFrameOperationResult:
         """Sort dataframe."""
-        return self.server.operations.sort(dataframe, by, **kwargs)
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.sort(df, by, **kwargs)
 
-    def filter(self, dataframe: List[Dict[str, Any]], conditions: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
+    async def filter(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], conditions: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
         """Filter dataframe."""
-        return self.server.operations.filter(dataframe, conditions, **kwargs)
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.filter(df, conditions, **kwargs)
 
-    def concat(self, left: List[Dict[str, Any]], right: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
+    async def concat(self, left: Union[List[Dict[str, Any]], pl.DataFrame], right: Union[List[Dict[str, Any]], pl.DataFrame], **kwargs) -> DataFrameOperationResult:
         """Concatenate dataframes."""
-        return self.server.operations.concat(left, right, **kwargs)
+        left_df = self._convert_to_dataframe(left)
+        right_df = self._convert_to_dataframe(right)
+        return await self.server.operations.concat(left_df, right_df, **kwargs)
 
-    def merge(self, left: List[Dict[str, Any]], right: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
+    async def merge(self, left: Union[List[Dict[str, Any]], pl.DataFrame], right: Union[List[Dict[str, Any]], pl.DataFrame], **kwargs) -> DataFrameOperationResult:
         """Merge dataframes."""
-        return self.server.operations.merge(left, right, **kwargs)
+        left_df = self._convert_to_dataframe(left)
+        right_df = self._convert_to_dataframe(right)
+        return await self.server.operations.merge(left_df, right_df, **kwargs)
 
-    def group_by(self, dataframe: List[Dict[str, Any]], by: List[str], aggregations: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
+    async def group_by(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], by: List[str], aggregations: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
         """Group and aggregate dataframe."""
-        return self.server.operations.group_by(dataframe, by, aggregations, **kwargs)
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.group_by(df, by, aggregations, **kwargs)
 
-    def apply_formula(self, dataframe: List[Dict[str, Any]], formula: str, column_name: str, **kwargs) -> DataFrameOperationResult:
+    async def apply_formula(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], formula: str, column_name: str, **kwargs) -> DataFrameOperationResult:
         """Apply formula to dataframe."""
-        return self.server.operations.apply_formula(dataframe, formula, column_name, **kwargs)
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.apply_formula(df, formula, column_name, **kwargs)
 
-    def drop_duplicates(self, dataframe: List[Dict[str, Any]], **kwargs) -> DataFrameOperationResult:
+    async def drop_duplicates(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], **kwargs) -> DataFrameOperationResult:
         """Remove duplicates from dataframe."""
-        return self.server.operations.drop_duplicates(dataframe, **kwargs)
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.drop_duplicates(df, **kwargs)
 
-    def init(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
+    async def init(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
         """Initialize dataframe."""
-        return self.server.operations.init_dataframe(dataframe)
+        return await self.server.operations.init_dataframe(dataframe)
