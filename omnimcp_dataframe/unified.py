@@ -228,7 +228,8 @@ class UnifiedDataFrameToolkit:
 
         Args:
             tool_name: Name of the operation to call
-            **kwargs: Arguments to pass to the operation
+            **kwargs: Arguments to pass to the operation. Can be direct arguments
+                     or wrapped in an 'args' dictionary.
 
         Returns:
             DataFrameOperationResult with the operation result
@@ -245,7 +246,14 @@ class UnifiedDataFrameToolkit:
             )
 
         try:
-            return await self._tool_registry[tool_name](**kwargs)
+            # Check if arguments are wrapped in an 'args' dictionary
+            # This handles the case where call is invoked as call(tool_name, args={...})
+            if "args" in kwargs and isinstance(kwargs["args"], dict) and len(kwargs) == 1:
+                actual_kwargs = kwargs["args"]
+            else:
+                actual_kwargs = kwargs
+
+            return await self._tool_registry[tool_name](**actual_kwargs)
         except Exception as e:
             self.logger.error(f"Error calling tool {tool_name}: {e}")
             return DataFrameOperationResult(
