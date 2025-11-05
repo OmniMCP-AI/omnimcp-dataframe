@@ -42,6 +42,7 @@ class UnifiedDataFrameToolkit:
             "group_by": self._call_group_by,
             "apply_formula": self._call_apply_formula,
             "drop_duplicates": self._call_drop_duplicates,
+            "explode": self._call_explode,
             "init": self._call_init,
         }
 
@@ -202,6 +203,24 @@ class UnifiedDataFrameToolkit:
                 }
             },
             {
+                "name": "explode",
+                "description": "Explode a list/array column to long format by creating a row for each list element",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "dataframe": {
+                            "oneOf": [
+                                {"type": "array"},
+                                {"$ref": "#/definitions/DataFrame"}
+                            ],
+                            "description": "DataFrame as list of dicts or polars DataFrame"
+                        },
+                        "column": {"type": "string", "description": "Column name to explode (must contain List or Array type)"}
+                    },
+                    "required": ["dataframe", "column"]
+                }
+            },
+            {
                 "name": "init",
                 "description": "Initialize a dataframe from a list of dictionaries or JSON string",
                 "parameters": {
@@ -289,6 +308,10 @@ class UnifiedDataFrameToolkit:
     async def _call_drop_duplicates(self, **kwargs) -> DataFrameOperationResult:
         """Call drop_duplicates operation."""
         return await self.toolkit.drop_duplicates(**kwargs)
+
+    async def _call_explode(self, **kwargs) -> DataFrameOperationResult:
+        """Call explode operation."""
+        return await self.toolkit.explode(**kwargs)
 
     async def _call_init(self, **kwargs) -> DataFrameOperationResult:
         """Call init operation."""

@@ -760,6 +760,73 @@ class DataFrameOperations:
                 message=f"Error removing duplicates: {str(e)}"
             )
 
+    async def explode(
+        self,
+        dataframe: pl.DataFrame,
+        column: str,
+    ) -> DataFrameOperationResult:
+        """Explode a list/array column to long format by creating a row for each list element.
+
+        Args:
+            dataframe: Polars DataFrame
+            column: Column name to explode (must contain List or Array type)
+
+        Returns:
+            DataFrameOperationResult with exploded data
+        """
+        try:
+            if dataframe.height == 0:
+                return DataFrameOperationResult(
+                    data=[],
+                    success=True,
+                    input_rows=0,
+                    output_rows=0,
+                    data_df=pl.DataFrame()
+                )
+
+            df = dataframe
+            input_rows = df.height
+
+            # Validate column exists
+            if column not in df.columns:
+                return DataFrameOperationResult(
+                    data=[],
+                    success=False,
+                    message=f"Column not found: {column}"
+                )
+
+            # Validate that column is List or Array type
+            dtype = df[column].dtype
+            if not (isinstance(dtype, pl.List) or isinstance(dtype, pl.Array)):
+                return DataFrameOperationResult(
+                    data=[],
+                    success=False,
+                    message=f"Column must be List or Array type. Column '{column}' is {dtype}"
+                )
+
+            # Explode the specified column
+            exploded_df = df.explode(column)
+            output_rows = exploded_df.height
+
+            result_data = exploded_df.to_dicts()
+
+            return DataFrameOperationResult(
+                data=result_data,
+                success=True,
+                input_rows=input_rows,
+                output_rows=output_rows,
+                shape=f"({exploded_df.height}, {exploded_df.width})",
+                data_df=exploded_df
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error exploding dataframe: {str(e)}")
+            return DataFrameOperationResult(
+                data=[],
+                success=False,
+                message=f"Error exploding dataframe: {str(e)}"
+            )
+
     async def init_dataframe(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
         """Initialize a dataframe from a list of dictionaries or JSON string.
 
@@ -835,6 +902,7 @@ class DataFrameServer:
             "group_by": self.operations.group_by,
             "apply_formula": self.operations.apply_formula,
             "drop_duplicates": self.operations.drop_duplicates,
+            "explode": self.operations.explode,
             "init": self.operations.init_dataframe,
         }
 
@@ -1043,6 +1111,29 @@ class DataFrameServer:
                 },
             },
             {
+                "name": "explode",
+                "description": "Explode a list/array column to long format by creating a row for each list element",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "dataframe": {"type": "array", "items": {"type": "object"}},
+                        "column": {"type": "string", "description": "Column name to explode (must contain List or Array type)"},
+                    },
+                    "required": ["dataframe", "column"],
+                },
+                "outputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "array", "items": {"type": "object"}},
+                        "success": {"type": "boolean"},
+                        "input_rows": {"type": "integer"},
+                        "output_rows": {"type": "integer"},
+                        "shape": {"type": "string"},
+                    },
+                    "required": ["data", "success"],
+                },
+            },
+            {
                 "name": "init",
                 "description": "Initialize a dataframe from a list of dictionaries or a JSON string",
                 "inputSchema": {
@@ -1173,6 +1264,11 @@ class DataFrameToolkit:
         """Remove duplicates from dataframe."""
         df = self._convert_to_dataframe(dataframe)
         return await self.server.operations.drop_duplicates(df, **kwargs)
+
+    async def explode(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], column: str, **kwargs) -> DataFrameOperationResult:
+        """Explode list/array column in dataframe."""
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.explode(df, column, **kwargs)
 
     async def init(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
         """Initialize dataframe."""

@@ -98,3 +98,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.clauderc.json
