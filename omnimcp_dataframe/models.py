@@ -41,7 +41,7 @@ class DataFrameOperationResult(BaseModel):
     confidence: Optional[float] = Field(default=None, description="Confidence score for fuzzy operations")
 
     # DataFrame object field (excluded from JSON serialization)
-    data_df: Optional[pl.DataFrame] = Field(default=None, description="Resulting dataframe as Polars DataFrame", exclude=True)
+    data_df: Optional[pl.DataFrame] = Field(default=pl.DataFrame(), description="Resulting dataframe as Polars DataFrame", exclude=True)
 
     class Config:
         arbitrary_types_allowed = True  # Allow Polars DataFrame type
