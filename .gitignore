@@ -100,3 +100,5 @@ dmypy.json
 .pyre/
 
 .clauderc.json
+requirements.lock
+requirements-dev.lock
