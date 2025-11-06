@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for the explode_struct DataFrame operation.
+Test suite for the explode DataFrame operation.
 """
 
 import sys
@@ -22,15 +22,15 @@ except ImportError:
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_basic():
-    """Test basic explode_struct functionality with url and price fields."""
+async def test_explode_basic():
+    """Test basic explode functionality with url and price fields."""
     data = [
         {'id': 1, 'image_urls': [{'url': 'apple', 'price': 23}, {'url': 'banana', 'price': 23}]},
         {'id': 2, 'image_urls': [{'url': 'orange', 'price': 23}]}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'image_urls', fields=['url', 'price'])
+    result = await toolkit.explode(data, 'image_urls', fields=['url', 'price'])
     print(result.data_df)
 
     assert result.success is True
@@ -56,15 +56,15 @@ async def test_explode_struct_basic():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_auto_detect_fields():
-    """Test explode_struct with automatic field detection."""
+async def test_explode_auto_detect_fields():
+    """Test explode with automatic field detection."""
     data = [
         {'id': 1, 'items': [{'name': 'apple', 'qty': 5, 'category': 'fruit'}]},
         {'id': 2, 'items': [{'name': 'bread', 'qty': 2, 'category': 'bakery'}]}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'items', fields=None)
+    result = await toolkit.explode(data, 'items', fields=None)
     print(result.data_df)
 
     assert result.success is True
@@ -80,14 +80,14 @@ async def test_explode_struct_auto_detect_fields():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_keep_original_column():
-    """Test explode_struct with keep_original=False."""
+async def test_explode_keep_original_column():
+    """Test explode with keep_original=False."""
     data = [
         {'id': 1, 'data': [{'field1': 'a', 'field2': 'b'}]}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'data', fields=['field1'], drop_original=False)
+    result = await toolkit.explode(data, 'data', fields=['field1'], drop_original=False)
     print(result.data_df)
 
     assert result.success is True
@@ -102,15 +102,15 @@ async def test_explode_struct_keep_original_column():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_json_string_column():
-    """Test explode_struct with JSON string columns."""
+async def test_explode_json_string_column():
+    """Test explode with JSON string columns."""
     data = [
         {'id': 1, 'items': '[{"name": "apple", "price": 5}, {"name": "banana", "price": 3}]'},
         {'id': 2, 'items': '[{"name": "orange", "price": 2}]'}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'items', fields=['name', 'price'])
+    result = await toolkit.explode(data, 'items', fields=['name', 'price'])
 
     assert result.success is True
     assert result.json_conversion_applied is True
@@ -123,14 +123,14 @@ async def test_explode_struct_json_string_column():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_relaxed_json_format():
-    """Test explode_struct with relaxed JSON format (unquoted keys)."""
+async def test_explode_relaxed_json_format():
+    """Test explode with relaxed JSON format (unquoted keys)."""
     data = [
         {'id': 1, 'data': '[{url:1, content:2}, {url:2, content:3}]'}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'data', fields=['url', 'content'])
+    result = await toolkit.explode(data, 'data', fields=['url', 'content'])
     print(result.data_df)
 
     assert result.success is True
@@ -145,8 +145,8 @@ async def test_explode_struct_relaxed_json_format():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_empty_lists():
-    """Test explode_struct with empty lists."""
+async def test_explode_empty_lists():
+    """Test explode with empty lists."""
     data = [
         {'id': 1, 'items': [{'name': 'apple'}]},
         {'id': 2, 'items': []},
@@ -154,7 +154,7 @@ async def test_explode_struct_empty_lists():
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'items', fields=['name'])
+    result = await toolkit.explode(data, 'items', fields=['name'])
     print(result.data_df)
 
     assert result.success is True
@@ -166,39 +166,39 @@ async def test_explode_struct_empty_lists():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_missing_column():
-    """Test that explode_struct fails gracefully when column doesn't exist."""
+async def test_explode_missing_column():
+    """Test that explode fails gracefully when column doesn't exist."""
     data = [{'id': 1, 'name': 'Alice'}]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'missing_column')
+    result = await toolkit.explode(data, 'missing_column')
 
     assert result.success is False
     assert 'Column not found: missing_column' in result.message
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_non_list_column():
-    """Test that explode_struct fails when column is not a list."""
+async def test_explode_non_list_column():
+    """Test that explode fails when column is not a list."""
     data = [{'id': 1, 'name': 'Alice'}]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'name', parse_json=False)
+    result = await toolkit.explode(data, 'name', parse_json=False)
 
     assert result.success is False
     assert 'must be List or Array type' in result.message
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_non_struct_elements():
-    """Test explode_struct with non-struct elements (should return exploded without field extraction)."""
+async def test_explode_non_struct_elements():
+    """Test explode with non-struct elements (should return exploded without field extraction)."""
     data = [
         {'id': 1, 'tags': ['apple', 'banana']},
         {'id': 2, 'tags': ['orange']}
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'tags', fields=['url'])
+    result = await toolkit.explode(data, 'tags', fields=['url'])
 
     assert result.success is True
     assert result.output_rows == 3
@@ -210,14 +210,14 @@ async def test_explode_struct_non_struct_elements():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_no_fields_specified():
-    """Test explode_struct when no fields can be auto-detected."""
+async def test_explode_no_fields_specified():
+    """Test explode when no fields can be auto-detected."""
     data = [
         {'id': 1, 'data': [None, 123]}  # No struct to extract fields from
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'data', fields=None)
+    result = await toolkit.explode(data, 'data', fields=None)
 
     # When no struct fields can be detected, it should still explode the data
     # and return a note about non-struct values
@@ -228,12 +228,12 @@ async def test_explode_struct_no_fields_specified():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_empty_dataframe():
-    """Test explode_struct with empty dataframe."""
+async def test_explode_empty_dataframe():
+    """Test explode with empty dataframe."""
     data = []
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'items')
+    result = await toolkit.explode(data, 'items')
 
     assert result.success is True
     assert result.input_rows == 0
@@ -242,14 +242,14 @@ async def test_explode_struct_empty_dataframe():
 
 
 @pytest.mark.asyncio
-async def test_explode_struct_mixed_objects():
-    """Test explode_struct with objects that have different fields."""
+async def test_explode_mixed_objects():
+    """Test explode with objects that have different fields."""
     data = [
         {'id': 1, 'items': [{'name': 'apple', 'price': 5}, {'name': 'banana', 'qty': 3}]},
     ]
 
     toolkit = DataFrameToolkit()
-    result = await toolkit.explode_struct(data, 'items', fields=['name', 'price', 'qty'])
+    result = await toolkit.explode(data, 'items', fields=['name', 'price', 'qty'])
 
     assert result.success is True
     assert result.output_rows == 2
@@ -262,22 +262,22 @@ async def test_explode_struct_mixed_objects():
 
 def run_sync_tests():
     """Run tests synchronously for manual testing."""
-    print("Running explode_struct tests...\n")
+    print("Running explode tests...\n")
 
     async def run_all_tests():
         tests = [
-            ("Basic explode_struct", test_explode_struct_basic),
-            ("Auto detect fields", test_explode_struct_auto_detect_fields),
-            ("Keep original column", test_explode_struct_keep_original_column),
-            ("JSON string column", test_explode_struct_json_string_column),
-            ("Relaxed JSON format", test_explode_struct_relaxed_json_format),
-            ("Empty lists", test_explode_struct_empty_lists),
-            ("Missing column (should fail)", test_explode_struct_missing_column),
-            ("Non-list column (should fail)", test_explode_struct_non_list_column),
-            ("Non-struct elements", test_explode_struct_non_struct_elements),
-            ("No fields specified (should fail)", test_explode_struct_no_fields_specified),
-            ("Empty dataframe", test_explode_struct_empty_dataframe),
-            ("Mixed objects", test_explode_struct_mixed_objects),
+            ("Basic explode", test_explode_basic),
+            ("Auto detect fields", test_explode_auto_detect_fields),
+            ("Keep original column", test_explode_keep_original_column),
+            ("JSON string column", test_explode_json_string_column),
+            ("Relaxed JSON format", test_explode_relaxed_json_format),
+            ("Empty lists", test_explode_empty_lists),
+            ("Missing column (should fail)", test_explode_missing_column),
+            ("Non-list column (should fail)", test_explode_non_list_column),
+            ("Non-struct elements", test_explode_non_struct_elements),
+            ("No fields specified (should fail)", test_explode_no_fields_specified),
+            ("Empty dataframe", test_explode_empty_dataframe),
+            ("Mixed objects", test_explode_mixed_objects),
         ]
 
         passed = 0

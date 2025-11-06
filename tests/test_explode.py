@@ -294,7 +294,7 @@ async def test_original_use_case_comparison():
     ])
 
     # NEW WAY: Using explode_struct (what user can do now)
-    new_result = await toolkit.explode_struct(df2_data, "image_urls", fields=["url", "price"])
+    new_result = await toolkit.explode(df2_data, "image_urls", fields=["url", "price"])
 
     # Both should produce the same final result
     assert new_result.success is True

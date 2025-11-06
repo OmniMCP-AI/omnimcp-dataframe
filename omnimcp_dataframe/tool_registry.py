@@ -212,39 +212,13 @@ TOOL_DEFINITIONS_MCP = [
     },
     {
         "name": "explode",
-        "description": "Explode a list/array column to long format by creating a row for each list element. Supports JSON string columns (e.g., '[{\"url\":1},{\"url\":2}]') with automatic parsing.",
+        "description": "Explode a list/array column to long format with optional struct field extraction. Supports basic explode (original behavior) AND struct explode + extract (NEW) for JSON arrays with objects. Automatically handles JSON string parsing and relaxed JSON format.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "dataframe": {"type": "array", "items": {"type": "object"}},
                 "column": {"type": "string", "description": "Column name to explode. Can be List/Array type or JSON string (e.g., '[{\"url\":1},{\"url\":2}]')"},
-                "parse_json": {"type": "boolean", "description": "If true, parse string columns as JSON before exploding (default: true)", "default": True},
-            },
-            "required": ["dataframe", "column"],
-        },
-        "outputSchema": {
-            "type": "object",
-            "properties": {
-                "data": {"type": "array", "items": {"type": "object"}},
-                "success": {"type": "boolean"},
-                "input_rows": {"type": "integer"},
-                "output_rows": {"type": "integer"},
-                "shape": {"type": "string"},
-                "json_conversion_applied": {"type": "boolean"},
-                "exploded_column": {"type": "string"},
-            },
-            "required": ["data", "success"],
-        },
-    },
-    {
-        "name": "explode_struct",
-        "description": "Explode a JSON array column and extract struct fields to separate columns. Perfect for columns like [{\"url\": \"...\", \"price\": 23}, {\"url\": \"...\", \"price\": 24}] where you want separate url and price columns.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "dataframe": {"type": "array", "items": {"type": "object"}},
-                "column": {"type": "string", "description": "Column name containing JSON arrays (e.g., [{\"url\": \"...\", \"price\": 23}, ...])"},
-                "fields": {"type": "array", "items": {"type": "string"}, "description": "List of field names to extract from each object. If None, extracts all fields automatically."},
+                "fields": {"type": "array", "items": {"type": "string"}, "description": "Optional list of field names to extract from each object. If provided, extracts struct fields to separate columns. If None, does basic explode only."},
                 "parse_json": {"type": "boolean", "description": "If true, parse string columns as JSON before exploding (default: true)", "default": True},
                 "drop_original": {"type": "boolean", "description": "If true, removes the original column after field extraction (default: true)", "default": True},
             },
@@ -262,6 +236,7 @@ TOOL_DEFINITIONS_MCP = [
                 "exploded_column": {"type": "string"},
                 "extracted_fields": {"type": "array", "items": {"type": "string"}},
                 "original_column_dropped": {"type": "boolean"},
+                "note": {"type": "string"},
             },
             "required": ["data", "success"],
         },
