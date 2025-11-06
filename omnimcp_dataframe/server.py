@@ -929,13 +929,47 @@ class DataFrameOperations:
                             f"If this is a JSON string column, ensure parse_json=True (default)."
                 )
 
-            # Explode the specified column
+            # Check if fields parameter is provided - if not, try to auto-detect
             exploded_df = df.explode(column)
 
-            # Check if exploded column contains structs (objects/dicts)
+            if fields is None:
+                # Try to auto-detect struct fields
+                exploded_dtype = exploded_df[column].dtype
+
+                # Check if exploded column contains structs
+                if isinstance(exploded_dtype, pl.Struct):
+                    # Auto-detect fields from struct
+                    # exploded_dtype.fields returns list of Field objects, extract names
+                    fields = [field.name for field in exploded_dtype.fields]
+                    self.logger.info(f"Auto-detected struct fields: {fields}")
+                    # Continue to struct field extraction below
+                else:
+                    # Not a struct, just return the exploded result
+                    output_rows = exploded_df.height
+                    result_data = exploded_df.to_dicts()
+
+                    return DataFrameOperationResult(
+                        data=result_data,
+                        success=True,
+                        input_rows=input_rows,
+                        output_rows=output_rows,
+                        shape=f"({exploded_df.height}, {exploded_df.width})",
+                        data_df=exploded_df,
+                        **{
+                            "json_conversion_applied": conversion_applied,
+                            "exploded_column": column,
+                            "note": "Column exploded but contains non-struct values, no field extraction performed"
+                        }
+                    )
+
+            # Struct explode + extract (NEW functionality)
+            # At this point, we know fields is not None (either explicitly provided or auto-detected)
+
+            # Verify the column contains structs before trying to extract fields
             exploded_dtype = exploded_df[column].dtype
-            if not (isinstance(exploded_dtype, pl.Struct) or exploded_dtype == pl.Object):
-                # If it's not a struct, just return the exploded result
+            if not isinstance(exploded_dtype, pl.Struct):
+                # If fields were explicitly provided but column is not a struct,
+                # return exploded result with a note
                 output_rows = exploded_df.height
                 result_data = exploded_df.to_dicts()
 
@@ -956,14 +990,6 @@ class DataFrameOperations:
             # Extract struct fields
             extract_exprs = []
             extracted_fields = []
-
-            if fields is None:
-                # Auto-detect fields from first non-null row
-                sample_data = exploded_df.filter(pl.col(column).is_not_null())[column].to_list()
-                if sample_data and isinstance(sample_data[0], dict):
-                    fields = list(sample_data[0].keys())
-                else:
-                    fields = []
 
             for field in fields:
                 extract_exprs.append(pl.col(column).struct.field(field).alias(field))
