@@ -71,3 +71,8 @@ disallow_untyped_defs = true
 [tool.ruff]
 line-length = 88
 target-version = "py38"
+
+[tool.rye]
+dev-dependencies = [
+    "pytest>=8.3.5",
+]

@@ -10,7 +10,8 @@ import asyncio
 # Add the parent directory to the path so we can import omnimcp_dataframe
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from omnimcp_dataframe import UnifiedDataFrameToolkit
+from omnimcp_dataframe import UnifiedDataFrameToolkit, DataFrameToolkit
+import polars as pl
 
 try:
     import pytest
@@ -267,6 +268,52 @@ def run_sync_tests():
         print(f"{'='*50}")
 
     asyncio.run(run_all_tests())
+
+
+@pytest.mark.asyncio
+async def test_original_use_case_comparison():
+    """Test the exact use case mentioned in the requirement to show the improvement."""
+    # This test demonstrates the exact scenario from the user's requirement
+    df2_data = [
+        {"id": 1, "image_urls": [{"url": "apple", "price": 23}, {"url": "banana", "price": 23}]},
+        {"id": 2, "image_urls": [{"url": "orange", "price": 23}]}
+    ]
+
+    toolkit = DataFrameToolkit()
+
+    # OLD WAY: Using explode + manual with_columns (what user had to do before)
+    exploded_result = await toolkit.explode(df2_data, "image_urls")
+
+    # Convert exploded data back to DataFrame for with_columns operation
+    exploded_df = pl.DataFrame(exploded_result.data)
+
+    # Apply the with_columns operation manually
+    result_df = exploded_df.with_columns([
+        pl.col("image_urls").struct.field("url"),
+        pl.col("image_urls").struct.field("price")
+    ])
+
+    # NEW WAY: Using explode_struct (what user can do now)
+    new_result = await toolkit.explode_struct(df2_data, "image_urls", fields=["url", "price"])
+
+    # Both should produce the same final result
+    assert new_result.success is True
+    assert result_df.height == new_result.output_rows
+
+    # Check that the new result has the expected structure
+    expected_rows = [
+        {"id": 1, "url": "apple", "price": 23},
+        {"id": 1, "url": "banana", "price": 23},
+        {"id": 2, "url": "orange", "price": 23}
+    ]
+
+    assert len(new_result.data) == 3
+    for expected_row, actual_row in zip(expected_rows, new_result.data):
+        assert actual_row["id"] == expected_row["id"]
+        assert actual_row["url"] == expected_row["url"]
+        assert actual_row["price"] == expected_row["price"]
+        # Original column should be dropped
+        assert "image_urls" not in actual_row
 
 
 if __name__ == "__main__":

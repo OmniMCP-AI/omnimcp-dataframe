@@ -789,6 +789,244 @@ class DataFrameOperations:
             # Already parsed list column
             [{"url": 1}, {"url": 2}] -> explodes to 2 rows
         """
+
+    async def explode_struct(
+        self,
+        dataframe: pl.DataFrame,
+        column: str,
+        fields: Optional[List[str]] = None,
+        parse_json: bool = True,
+        drop_original: bool = True,
+    ) -> DataFrameOperationResult:
+        """Explode a JSON array column and extract struct fields to separate columns.
+
+        This method is designed for columns containing JSON arrays where each element
+        is an object/dict. It explodes the array and extracts specified fields as separate columns.
+
+        Args:
+            dataframe: Polars DataFrame
+            column: Column name containing JSON arrays (e.g., [{"url": "...", "price": 23}, ...])
+            fields: List of field names to extract from each object. If None, extracts all fields.
+            parse_json: If True, attempt to parse string columns as JSON (default: True)
+            drop_original: If True, removes the original column after field extraction (default: True)
+
+        Returns:
+            DataFrameOperationResult with exploded data and extracted fields
+
+        Examples:
+            # Input data
+            df = pl.DataFrame({
+                "id": [1, 2],
+                "image_urls": [
+                    [{"url": "apple", "price": 23}, {"url": "banana", "price": 23}],
+                    [{"url": "orange", "price": 23}]
+                ]
+            })
+
+            # Extract url and price fields
+            result = await explode_struct(df, "image_urls", fields=["url", "price"])
+            # Results in columns: id, url, price
+        """
+        try:
+            if dataframe.height == 0:
+                return DataFrameOperationResult(
+                    data=[],
+                    success=True,
+                    input_rows=0,
+                    output_rows=0,
+                    data_df=pl.DataFrame()
+                )
+
+            df = dataframe
+            input_rows = df.height
+
+            # Validate column exists
+            if column not in df.columns:
+                return DataFrameOperationResult(
+                    data=[],
+                    success=False,
+                    message=f"Column not found: {column}"
+                )
+
+            dtype = df[column].dtype
+            conversion_applied = False
+
+            # If column is String type and parse_json is True, try to parse as JSON
+            if dtype in [pl.Utf8, pl.String] and parse_json:
+                try:
+                    # Parse JSON strings to Python objects first
+                    def parse_json_value(val):
+                        """Parse JSON string to Python list/dict."""
+                        if val is None or (isinstance(val, str) and val.strip() == ""):
+                            return []
+                        if isinstance(val, str):
+                            try:
+                                # First try standard JSON parsing
+                                parsed = json.loads(val)
+                                # Ensure it's a list for exploding
+                                if isinstance(parsed, dict):
+                                    return [parsed]
+                                elif isinstance(parsed, list):
+                                    return parsed
+                                else:
+                                    return [parsed]
+                            except json.JSONDecodeError:
+                                # Try to fix common JSON issues
+                                # Add quotes around unquoted keys
+                                fixed_val = re.sub(r'(\{|,)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', val)
+                                # Replace single quotes with double quotes
+                                fixed_val = fixed_val.replace("'", '"')
+                                try:
+                                    parsed = json.loads(fixed_val)
+                                    if isinstance(parsed, dict):
+                                        return [parsed]
+                                    elif isinstance(parsed, list):
+                                        return parsed
+                                    else:
+                                        return [parsed]
+                                except:
+                                    self.logger.warning(f"Could not parse JSON value: {val[:100]}")
+                                    return []
+                        return []
+
+                    # First, create a temp dataframe with parsed data
+                    parsed_data = []
+                    for row in df.to_dicts():
+                        new_row = row.copy()
+                        new_row[column] = parse_json_value(row[column])
+                        parsed_data.append(new_row)
+
+                    # Create new dataframe from parsed data - Polars will infer proper types
+                    df = pl.DataFrame(parsed_data)
+
+                    conversion_applied = True
+                    self.logger.info(f"Converted string column '{column}' to List type via JSON parsing")
+
+                except Exception as e:
+                    self.logger.warning(f"Could not parse column '{column}' as JSON: {e}")
+                    return DataFrameOperationResult(
+                        data=[],
+                        success=False,
+                        message=f"Failed to parse column '{column}' as JSON. Use parse_json=False to skip parsing. Error: {str(e)}"
+                    )
+
+            # After potential conversion, check if column is now List or Array type
+            dtype = df[column].dtype
+            if not (isinstance(dtype, (pl.List, pl.Array)) or dtype == pl.Object):
+                return DataFrameOperationResult(
+                    data=[],
+                    success=False,
+                    message=f"Column must be List or Array type. Column '{column}' is {dtype}. "
+                            f"If this is a JSON string column, ensure parse_json=True (default)."
+                )
+
+            # Explode the specified column
+            exploded_df = df.explode(column)
+
+            # Check if exploded column contains structs (objects/dicts)
+            exploded_dtype = exploded_df[column].dtype
+            if not (isinstance(exploded_dtype, pl.Struct) or exploded_dtype == pl.Object):
+                # If it's not a struct, just return the exploded result
+                output_rows = exploded_df.height
+                result_data = exploded_df.to_dicts()
+
+                return DataFrameOperationResult(
+                    data=result_data,
+                    success=True,
+                    input_rows=input_rows,
+                    output_rows=output_rows,
+                    shape=f"({exploded_df.height}, {exploded_df.width})",
+                    data_df=exploded_df,
+                    **{
+                        "json_conversion_applied": conversion_applied,
+                        "exploded_column": column,
+                        "note": "Column exploded but contains non-struct values, no field extraction performed"
+                    }
+                )
+
+            # Extract struct fields
+            extract_exprs = []
+            extracted_fields = []
+
+            if fields is None:
+                # Auto-detect fields from first non-null row
+                sample_data = exploded_df.filter(pl.col(column).is_not_null())[column].to_list()
+                if sample_data and isinstance(sample_data[0], dict):
+                    fields = list(sample_data[0].keys())
+                else:
+                    fields = []
+
+            for field in fields:
+                extract_exprs.append(pl.col(column).struct.field(field).alias(field))
+                extracted_fields.append(field)
+
+            if not extract_exprs:
+                return DataFrameOperationResult(
+                    data=[],
+                    success=False,
+                    message=f"No fields to extract. Specify 'fields' parameter or ensure column contains objects with keys."
+                )
+
+            # Apply field extraction
+            if drop_original:
+                result_df = exploded_df.with_columns(extract_exprs).drop(column)
+            else:
+                result_df = exploded_df.with_columns(extract_exprs)
+
+            output_rows = result_df.height
+            result_data = result_df.to_dicts()
+
+            return DataFrameOperationResult(
+                data=result_data,
+                success=True,
+                input_rows=input_rows,
+                output_rows=output_rows,
+                shape=f"({result_df.height}, {result_df.width})",
+                data_df=result_df,
+                **{
+                    "json_conversion_applied": conversion_applied,
+                    "exploded_column": column,
+                    "extracted_fields": extracted_fields,
+                    "original_column_dropped": drop_original
+                }
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error exploding struct dataframe: {str(e)}")
+            return DataFrameOperationResult(
+                data=[],
+                success=False,
+                message=f"Error exploding struct dataframe: {str(e)}"
+            )
+
+    async def explode(
+        self,
+        dataframe: pl.DataFrame,
+        column: str,
+        parse_json: bool = True,
+    ) -> DataFrameOperationResult:
+        """Explode a list/array column to long format by creating a row for each list element.
+
+        This method supports three input formats:
+        1. Native List/Array columns (already parsed)
+        2. JSON string columns (will be parsed if parse_json=True)
+        3. String columns containing valid JSON arrays/objects
+
+        Args:
+            dataframe: Polars DataFrame
+            column: Column name to explode (can contain List, Array, or String type)
+            parse_json: If True, attempt to parse string columns as JSON (default: True)
+
+        Returns:
+            DataFrameOperationResult with exploded data
+
+        Examples:
+            # String column with JSON array
+            "[{url:1, content:2},{url:2, content:3}]" -> explodes to 2 rows
+
+            # Already parsed list column
+            [{"url": 1}, {"url": 2}] -> explodes to 2 rows
+        """
         try:
             if dataframe.height == 0:
                 return DataFrameOperationResult(
@@ -985,6 +1223,7 @@ class DataFrameServer:
             "apply_formula": self.operations.apply_formula,
             "drop_duplicates": self.operations.drop_duplicates,
             "explode": self.operations.explode,
+            "explode_struct": self.operations.explode_struct,
             "init": self.operations.init_dataframe,
         }
 
@@ -1111,6 +1350,11 @@ class DataFrameToolkit:
         """Explode list/array column in dataframe."""
         df = self._convert_to_dataframe(dataframe)
         return await self.server.operations.explode(df, column, **kwargs)
+
+    async def explode_struct(self, dataframe: Union[List[Dict[str, Any]], pl.DataFrame], column: str, **kwargs) -> DataFrameOperationResult:
+        """Explode JSON array column and extract struct fields to separate columns."""
+        df = self._convert_to_dataframe(dataframe)
+        return await self.server.operations.explode_struct(df, column, **kwargs)
 
     async def init(self, dataframe: Union[List[Dict[str, Any]], str]) -> DataFrameOperationResult:
         """Initialize dataframe."""
