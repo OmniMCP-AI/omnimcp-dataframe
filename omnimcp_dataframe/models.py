@@ -40,6 +40,10 @@ class DataFrameOperationResult(BaseModel):
     right_columns: Optional[List[str]] = Field(default=None, description="Right columns used in join")
     confidence: Optional[float] = Field(default=None, description="Confidence score for fuzzy operations")
 
+    # Explode-specific fields
+    json_conversion_applied: Optional[bool] = Field(default=None, description="Whether JSON string conversion was applied")
+    exploded_column: Optional[str] = Field(default=None, description="Column that was exploded")
+
     # DataFrame object field (excluded from JSON serialization)
     data_df: Optional[pl.DataFrame] = Field(default=pl.DataFrame(), description="Resulting dataframe as Polars DataFrame", exclude=True)
 

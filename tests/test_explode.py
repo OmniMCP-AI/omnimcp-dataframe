@@ -103,7 +103,8 @@ async def test_explode_non_list_column():
     ]
 
     toolkit = UnifiedDataFrameToolkit()
-    result = await toolkit.call('explode', dataframe=data, column='name')
+    # Disable JSON parsing to test that non-list columns are rejected
+    result = await toolkit.call('explode', dataframe=data, column='name', parse_json=False)
 
     assert result.success is False
     assert 'must be List or Array type' in result.message
@@ -184,6 +185,49 @@ async def test_explode_empty_dataframe():
     assert len(result.data) == 0
 
 
+@pytest.mark.asyncio
+async def test_explode_json_string_column():
+    """Test explode with JSON string columns (new feature)."""
+    data = [
+        {'id': 1, 'items': '[{"name": "apple", "qty": 5}, {"name": "banana", "qty": 3}]'},
+        {'id': 2, 'items': '[{"name": "orange", "qty": 2}]'},
+    ]
+
+    toolkit = UnifiedDataFrameToolkit()
+    result = await toolkit.call('explode', dataframe=data, column='items')
+
+    assert result.success is True
+    assert result.input_rows == 2
+    assert result.output_rows == 3
+    assert result.json_conversion_applied is True
+
+    # Verify the exploded data
+    id1_rows = [row for row in result.data if row['id'] == 1]
+    assert len(id1_rows) == 2
+    assert id1_rows[0]['items']['name'] in ['apple', 'banana']
+    assert id1_rows[1]['items']['name'] in ['apple', 'banana']
+
+
+@pytest.mark.asyncio
+async def test_explode_json_string_relaxed_format():
+    """Test explode with relaxed JSON format (unquoted keys)."""
+    data = [
+        {'id': 1, 'data': '[{url:1, content:2}, {url:2, content:3}]'},
+    ]
+
+    toolkit = UnifiedDataFrameToolkit()
+    result = await toolkit.call('explode', dataframe=data, column='data')
+
+    assert result.success is True
+    assert result.input_rows == 1
+    assert result.output_rows == 2
+    assert result.json_conversion_applied is True
+
+    # Verify the exploded data has parsed objects
+    assert result.data[0]['data']['url'] == 1
+    assert result.data[1]['data']['url'] == 2
+
+
 def run_sync_tests():
     """Run tests synchronously for manual testing."""
     print("Running explode tests...\n")
@@ -198,6 +242,8 @@ def run_sync_tests():
             ("Null values", test_explode_with_null_values),
             ("Preserve other columns", test_explode_preserves_other_columns),
             ("Empty dataframe", test_explode_empty_dataframe),
+            ("JSON string column", test_explode_json_string_column),
+            ("JSON relaxed format", test_explode_json_string_relaxed_format),
         ]
 
         passed = 0

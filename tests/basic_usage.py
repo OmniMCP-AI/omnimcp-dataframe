@@ -4,7 +4,7 @@ Basic usage examples for omnimcp-dataframe package.
 
 from omnimcp_dataframe import DataFrameToolkit
 
-def main():
+async def main():
     """Demonstrate basic DataFrame operations."""
     print("=== OmniMCP DataFrame Toolkit - Basic Usage ===\n")
 
@@ -27,7 +27,7 @@ def main():
 
     # Example 1: Sort by age
     print("1. Sort by age (ascending):")
-    result = toolkit.sort(dataframe=sales_data, by=["age"])
+    result = await toolkit.sort(dataframe=sales_data, by=["age"])
     if result.success:
         for row in result.data:
             print(f"  {row}")
@@ -35,7 +35,7 @@ def main():
 
     # Example 2: Sort by salary (descending)
     print("2. Sort by salary (descending):")
-    result = toolkit.sort(dataframe=sales_data, by=["salary"], descending=[True])
+    result = await toolkit.sort(dataframe=sales_data, by=["salary"], descending=[True])
     if result.success:
         for row in result.data:
             print(f"  {row}")
@@ -43,7 +43,7 @@ def main():
 
     # Example 3: Filter by age
     print("3. Filter employees age >= 30:")
-    result = toolkit.filter(
+    result = await toolkit.filter(
         dataframe=sales_data,
         conditions=[
             {"column": "age", "op": "gte", "value": 30}
@@ -57,7 +57,7 @@ def main():
 
     # Example 4: Filter by city and department
     print("4. Filter by city = 'New York' AND department = 'Engineering':")
-    result = toolkit.filter(
+    result = await toolkit.filter(
         dataframe=sales_data,
         conditions=[
             {"column": "city", "op": "eq", "value": "New York"},
@@ -72,7 +72,7 @@ def main():
 
     # Example 5: Group by city and count employees
     print("5. Group by city and count employees:")
-    result = toolkit.group_by(
+    result = await toolkit.group_by(
         dataframe=sales_data,
         by=["city"],
         aggregations=[
@@ -87,7 +87,7 @@ def main():
 
     # Example 6: Group by department and get salary statistics
     print("6. Group by department - salary statistics:")
-    result = toolkit.group_by(
+    result = await toolkit.group_by(
         dataframe=sales_data,
         by=["department"],
         aggregations=[
@@ -103,7 +103,7 @@ def main():
 
     # Example 7: Apply formula - calculate annual salary
     print("7. Calculate annual salary (monthly * 12):")
-    result = toolkit.apply_formula(
+    result = await toolkit.apply_formula(
         dataframe=sales_data,
         formula="salary * 12",
         column_name="annual_salary"
@@ -116,7 +116,7 @@ def main():
 
     # Example 8: Apply Excel-style formula
     print("8. Excel-style formula - age in months:")
-    result = toolkit.apply_formula(
+    result = await toolkit.apply_formula(
         dataframe=sales_data,
         formula="=B1 * 12",  # B1 refers to age column
         column_name="age_in_months",
@@ -136,7 +136,7 @@ def main():
         {"name": "Eve", "bonus": "10K"},
     ]
 
-    result = toolkit.merge(
+    result = await toolkit.merge(
         left=sales_data,
         right=bonus_data,
         on=["name"],
@@ -155,7 +155,7 @@ def main():
         {"name": "Grace", "age": 26, "city": "Boston", "salary": "72K", "department": "Marketing"},
     ]
 
-    result = toolkit.concat(
+    result = await toolkit.concat(
         left=sales_data,
         right=new_employees,
         drop_duplicates=True
@@ -171,7 +171,7 @@ def main():
     data_with_duplicates = sales_data + sales_data[:2]  # Add duplicates
     print(f"  Before: {len(data_with_duplicates)} rows")
 
-    result = toolkit.drop_duplicates(dataframe=data_with_duplicates)
+    result = await toolkit.drop_duplicates(dataframe=data_with_duplicates)
     if result.success:
         print(f"  After: {result.output_rows} rows")
         print(f"  Removed: {result.duplicates_removed} duplicates")
@@ -181,4 +181,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 import polars as pl
 from .models import DataFrameConfig, DataFrameOperationResult
 from .server import DataFrameToolkit
+from .tool_registry import get_tools_sdk_format
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -48,198 +49,19 @@ class UnifiedDataFrameToolkit:
 
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """
-        Get list of available tools with their schemas.
+        Get list of available tools with their schemas for Python SDK usage.
+
+        Note: The schemas are automatically transformed from MCP format to support
+        both list-of-dicts AND Polars DataFrame objects for dataframe parameters.
+        This transformation happens via get_tools_sdk_format() which adds:
+        {"oneOf": [{"type": "array"}, {"$ref": "#/definitions/DataFrame"}]}
+
+        For MCP protocol usage (JSON only), see DataFrameServer.get_tools().
 
         Returns:
             List of tool dictionaries with name, description, and parameter schema
         """
-        tools = [
-            {
-                "name": "sort",
-                "description": "Sort dataframe by specified columns with optional limit",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "by": {"type": "array", "items": {"type": "string"}, "description": "List of column names to sort by"},
-                        "descending": {"type": "array", "items": {"type": "boolean"}, "description": "List of sort directions"},
-                        "limit": {"type": "integer", "description": "Optional limit to return only top N rows"}
-                    },
-                    "required": ["dataframe", "by"]
-                }
-            },
-            {
-                "name": "filter",
-                "description": "Filter dataframe based on conditions with AND/OR logic",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "conditions": {"type": "array", "description": "List of filter conditions"},
-                        "logic": {"type": "string", "enum": ["and", "or"], "default": "and", "description": "Logic for combining conditions"}
-                    },
-                    "required": ["dataframe", "conditions"]
-                }
-            },
-            {
-                "name": "concat",
-                "description": "Concatenate two dataframes with optional duplicate removal",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "left": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "First dataframe as list of dicts or polars DataFrame"
-                        },
-                        "right": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "Second dataframe as list of dicts or polars DataFrame"
-                        },
-                        "drop_duplicates": {"type": "boolean", "default": False, "description": "Whether to drop duplicates"}
-                    },
-                    "required": ["left", "right"]
-                }
-            },
-            {
-                "name": "merge",
-                "description": "Merge two dataframes on specified columns with different join strategies",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "left": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "Left dataframe as list of dicts or polars DataFrame"
-                        },
-                        "right": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "Right dataframe as list of dicts or polars DataFrame"
-                        },
-                        "on": {"type": "array", "items": {"type": "string"}, "description": "Columns to join on"},
-                        "how": {"type": "string", "enum": ["inner", "left", "right", "outer"], "default": "inner", "description": "Join strategy"},
-                        "fuzzy": {"type": "boolean", "default": False, "description": "Enable fuzzy matching"}
-                    },
-                    "required": ["left", "right"]
-                }
-            },
-            {
-                "name": "group_by",
-                "description": "Group dataframe by specified columns and apply aggregation functions",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "by": {"type": "array", "items": {"type": "string"}, "description": "Columns to group by"},
-                        "aggregations": {"type": "array", "description": "List of aggregation specifications"}
-                    },
-                    "required": ["dataframe", "by", "aggregations"]
-                }
-            },
-            {
-                "name": "apply_formula",
-                "description": "Apply Excel-like formulas to dataframe columns",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "formula": {"type": "string", "description": "Excel-like formula to apply"},
-                        "column_name": {"type": "string", "description": "Name for the new column"},
-                        "use_excel_refs": {"type": "boolean", "default": False, "description": "Use Excel cell references"}
-                    },
-                    "required": ["dataframe", "formula", "column_name"]
-                }
-            },
-            {
-                "name": "drop_duplicates",
-                "description": "Remove duplicate rows from dataframe",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "subset": {"type": "array", "items": {"type": "string"}, "description": "Optional subset of columns to check for duplicates"}
-                    },
-                    "required": ["dataframe"]
-                }
-            },
-            {
-                "name": "explode",
-                "description": "Explode a list/array column to long format by creating a row for each list element",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"$ref": "#/definitions/DataFrame"}
-                            ],
-                            "description": "DataFrame as list of dicts or polars DataFrame"
-                        },
-                        "column": {"type": "string", "description": "Column name to explode (must contain List or Array type)"}
-                    },
-                    "required": ["dataframe", "column"]
-                }
-            },
-            {
-                "name": "init",
-                "description": "Initialize a dataframe from a list of dictionaries or JSON string",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array"},
-                                {"type": "string"}
-                            ],
-                            "description": "Data as list of dicts or JSON string"
-                        }
-                    },
-                    "required": ["dataframe"]
-                }
-            }
-        ]
-
-        return tools
+        return get_tools_sdk_format()
 
     async def call(self, tool_name: str, **kwargs) -> DataFrameOperationResult:
         """

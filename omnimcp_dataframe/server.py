@@ -22,6 +22,7 @@ from .models import (
     DataFrameConfig,
 )
 from .prompts import IDENTIFY_JOIN_KEYS_PROMPT
+from .tool_registry import get_tools_mcp_format
 from .utils import (
     parse_human_readable_number,
     safe_column_operation,
@@ -764,15 +765,29 @@ class DataFrameOperations:
         self,
         dataframe: pl.DataFrame,
         column: str,
+        parse_json: bool = True,
     ) -> DataFrameOperationResult:
         """Explode a list/array column to long format by creating a row for each list element.
 
+        This method supports three input formats:
+        1. Native List/Array columns (already parsed)
+        2. JSON string columns (will be parsed if parse_json=True)
+        3. String columns containing valid JSON arrays/objects
+
         Args:
             dataframe: Polars DataFrame
-            column: Column name to explode (must contain List or Array type)
+            column: Column name to explode (can contain List, Array, or String type)
+            parse_json: If True, attempt to parse string columns as JSON (default: True)
 
         Returns:
             DataFrameOperationResult with exploded data
+
+        Examples:
+            # String column with JSON array
+            "[{url:1, content:2},{url:2, content:3}]" -> explodes to 2 rows
+
+            # Already parsed list column
+            [{"url": 1}, {"url": 2}] -> explodes to 2 rows
         """
         try:
             if dataframe.height == 0:
@@ -795,13 +810,76 @@ class DataFrameOperations:
                     message=f"Column not found: {column}"
                 )
 
-            # Validate that column is List or Array type
             dtype = df[column].dtype
-            if not (isinstance(dtype, pl.List) or isinstance(dtype, pl.Array)):
+            conversion_applied = False
+
+            # If column is String type and parse_json is True, try to parse as JSON
+            if dtype in [pl.Utf8, pl.String] and parse_json:
+                try:
+                    # Parse JSON strings to Python objects first
+                    def parse_json_value(val):
+                        """Parse JSON string to Python list/dict."""
+                        if val is None or (isinstance(val, str) and val.strip() == ""):
+                            return []
+                        if isinstance(val, str):
+                            try:
+                                # First try standard JSON parsing
+                                parsed = json.loads(val)
+                                # Ensure it's a list for exploding
+                                if isinstance(parsed, dict):
+                                    return [parsed]
+                                elif isinstance(parsed, list):
+                                    return parsed
+                                else:
+                                    return [parsed]
+                            except json.JSONDecodeError:
+                                # Try to fix common JSON issues
+                                # Add quotes around unquoted keys
+                                fixed_val = re.sub(r'(\{|,)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', val)
+                                # Replace single quotes with double quotes
+                                fixed_val = fixed_val.replace("'", '"')
+                                try:
+                                    parsed = json.loads(fixed_val)
+                                    if isinstance(parsed, dict):
+                                        return [parsed]
+                                    elif isinstance(parsed, list):
+                                        return parsed
+                                    else:
+                                        return [parsed]
+                                except:
+                                    self.logger.warning(f"Could not parse JSON value: {val[:100]}")
+                                    return []
+                        return []
+
+                    # First, create a temp dataframe with parsed data
+                    parsed_data = []
+                    for row in df.to_dicts():
+                        new_row = row.copy()
+                        new_row[column] = parse_json_value(row[column])
+                        parsed_data.append(new_row)
+
+                    # Create new dataframe from parsed data - Polars will infer proper types
+                    df = pl.DataFrame(parsed_data)
+
+                    conversion_applied = True
+                    self.logger.info(f"Converted string column '{column}' to List type via JSON parsing")
+
+                except Exception as e:
+                    self.logger.warning(f"Could not parse column '{column}' as JSON: {e}")
+                    return DataFrameOperationResult(
+                        data=[],
+                        success=False,
+                        message=f"Failed to parse column '{column}' as JSON. Use parse_json=False to skip parsing. Error: {str(e)}"
+                    )
+
+            # After potential conversion, check if column is now List or Array type
+            dtype = df[column].dtype
+            if not (isinstance(dtype, (pl.List, pl.Array)) or dtype == pl.Object):
                 return DataFrameOperationResult(
                     data=[],
                     success=False,
-                    message=f"Column must be List or Array type. Column '{column}' is {dtype}"
+                    message=f"Column must be List or Array type. Column '{column}' is {dtype}. "
+                            f"If this is a JSON string column, ensure parse_json=True (default)."
                 )
 
             # Explode the specified column
@@ -816,7 +894,11 @@ class DataFrameOperations:
                 input_rows=input_rows,
                 output_rows=output_rows,
                 shape=f"({exploded_df.height}, {exploded_df.width})",
-                data_df=exploded_df
+                data_df=exploded_df,
+                **{
+                    "json_conversion_applied": conversion_applied,
+                    "exploded_column": column
+                }
             )
 
         except Exception as e:
@@ -907,258 +989,18 @@ class DataFrameServer:
         }
 
     def get_tools(self) -> List[Dict[str, Any]]:
-        """Get available DataFrame tools.
+        """Get available DataFrame tools in MCP format.
+
+        Note: The schemas use {"type": "array", "items": {"type": "object"}}
+        for dataframe parameters because MCP protocol requires JSON-serializable
+        data. Polars DataFrame objects cannot be passed over MCP.
+
+        For Python SDK usage with DataFrame support, see UnifiedDataFrameToolkit.
 
         Returns:
-            List of tool definitions compatible with MCP
+            List of tool definitions compatible with MCP protocol
         """
-        return [
-            {
-                "name": "sort",
-                "description": "Sort a dataframe by specified columns with optional limit for top-n results",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "by": {"type": "array", "items": {"type": "string"}},
-                        "descending": {"type": "array", "items": {"type": "boolean"}},
-                        "limit": {"type": "integer"},
-                    },
-                    "required": ["dataframe", "by"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "input_rows": {"type": "integer"},
-                        "output_rows": {"type": "integer"},
-                        "shape": {"type": "string"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "filter",
-                "description": "Filter a dataframe based on single or multiple conditions",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "conditions": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "column": {"type": "string"},
-                                    "op": {"type": "string", "enum": ["eq", "ne", "gt", "lt", "gte", "lte", "contains", "in", "between", "is_null", "not_null", "regex"]},
-                                    "value": {},
-                                },
-                                "required": ["column", "op"],
-                            },
-                        },
-                        "logic": {"type": "string", "enum": ["AND", "OR"]},
-                    },
-                    "required": ["dataframe", "conditions"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "input_rows": {"type": "integer"},
-                        "output_rows": {"type": "integer"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "concat",
-                "description": "Concatenate two dataframes with optional duplicate removal",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "left": {"type": "array", "items": {"type": "object"}},
-                        "right": {"type": "array", "items": {"type": "object"}},
-                        "drop_duplicates": {"type": "boolean"},
-                        "subset": {"type": "array", "items": {"type": "string"}},
-                        "keep": {"type": "string", "enum": ["first", "last", "none"]},
-                    },
-                    "required": ["left", "right"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "total_rows": {"type": "integer"},
-                        "duplicates_removed": {"type": "integer"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "merge",
-                "description": "Merge two dataframes on specified columns with different join strategies",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "left": {"type": "array", "items": {"type": "object"}},
-                        "right": {"type": "array", "items": {"type": "object"}},
-                        "on": {"type": "array", "items": {"type": "string"}},
-                        "left_on": {"type": "array", "items": {"type": "string"}},
-                        "right_on": {"type": "array", "items": {"type": "string"}},
-                        "how": {"type": "string", "enum": ["inner", "left", "outer", "cross"]},
-                    },
-                    "required": ["left", "right"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "total_rows": {"type": "integer"},
-                        "left_rows": {"type": "integer"},
-                        "right_rows": {"type": "integer"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "group_by",
-                "description": "Group dataframe by specified columns and apply aggregation functions",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "by": {"type": "array", "items": {"type": "string"}},
-                        "aggregations": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "column": {"type": "string"},
-                                    "function": {"type": "string", "enum": ["count", "sum", "mean", "min", "max", "median", "first", "last", "std", "var", "count_distinct"]},
-                                },
-                                "required": ["column", "function"],
-                            },
-                        },
-                    },
-                    "required": ["dataframe", "by", "aggregations"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "input_rows": {"type": "integer"},
-                        "output_rows": {"type": "integer"},
-                        "group_columns": {"type": "array", "items": {"type": "string"}},
-                        "aggregated_columns": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "apply_formula",
-                "description": "Apply Excel-like formulas to dataframe columns",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "formula": {"type": "string"},
-                        "column_name": {"type": "string"},
-                        "use_excel_refs": {"type": "boolean"},
-                        "target_columns": {"type": "object", "additionalProperties": {"type": "string"}},
-                    },
-                    "required": ["dataframe", "formula", "column_name"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "shape": {"type": "string"},
-                        "columns": {"type": "array", "items": {"type": "string"}},
-                        "formula_applied": {"type": "string"},
-                        "result_column": {"type": "string"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "drop_duplicates",
-                "description": "Remove duplicate rows from a dataframe based on specified columns",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "subset": {"type": "array", "items": {"type": "string"}},
-                        "keep": {"type": "string", "enum": ["first", "last", "none"]},
-                    },
-                    "required": ["dataframe"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "input_rows": {"type": "integer"},
-                        "output_rows": {"type": "integer"},
-                        "duplicates_removed": {"type": "integer"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "explode",
-                "description": "Explode a list/array column to long format by creating a row for each list element",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {"type": "array", "items": {"type": "object"}},
-                        "column": {"type": "string", "description": "Column name to explode (must contain List or Array type)"},
-                    },
-                    "required": ["dataframe", "column"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "input_rows": {"type": "integer"},
-                        "output_rows": {"type": "integer"},
-                        "shape": {"type": "string"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-            {
-                "name": "init",
-                "description": "Initialize a dataframe from a list of dictionaries or a JSON string",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "dataframe": {
-                            "oneOf": [
-                                {"type": "array", "items": {"type": "object"}},
-                                {"type": "string"},
-                            ],
-                        },
-                    },
-                    "required": ["dataframe"],
-                },
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "data": {"type": "array", "items": {"type": "object"}},
-                        "success": {"type": "boolean"},
-                        "shape": {"type": "string"},
-                    },
-                    "required": ["data", "success"],
-                },
-            },
-        ]
+        return get_tools_mcp_format()
 
     async def call_tool(
         self,
